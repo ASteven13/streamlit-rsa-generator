@@ -1,7 +1,8 @@
-import streamlit as st
 import re
+import os
 import requests
 from bs4 import BeautifulSoup
+import streamlit as st
 import openai
 
 def capitalize_words(text):
@@ -21,7 +22,11 @@ def scrape_website(landing_page):
         pass
     return ""
 
-def generate_ad_copy_with_ai(keywords, landing_page, sentiment, usps, ctas):
+def generate_ad_copy_with_ai(keywords, landing_page, sentiment, usps, ctas, temperature):
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        return "Error: OpenAI API key not found in environment variables."
+
     scraped_content = scrape_website(landing_page)
     prompt = f"""
     Generate a Google Responsive Search Ad with the following parameters:
@@ -31,49 +36,41 @@ def generate_ad_copy_with_ai(keywords, landing_page, sentiment, usps, ctas):
     - Unique Selling Points: {', '.join(usps)}
     - Call-To-Actions: {', '.join(ctas)}
     - Website Content: {scraped_content[:1000]} (truncated for brevity)
-    
+
     Ensure that:
     - Headlines are full sentences, max 30 characters each (15 headlines)
     - Descriptions are max 90 characters each (4 descriptions)
     - Paths (2) are max 15 characters each
     - Ad copy complies with Google Ads policies
     """
-    
-    response = openai.ChatCompletion.create(
+
+    client = openai.Client(api_key=api_key)
+    response = client.chat.completions.create(
         model="gpt-4",
         messages=[{"role": "system", "content": "You are an expert ad copywriter for Google Ads."},
-                  {"role": "user", "content": prompt}]
+                  {"role": "user", "content": prompt}],
+        temperature=temperature
     )
-    
-    return response["choices"][0]["message"]["content"]
 
-def main():
-    st.title("AI-Powered Responsive Search Ads Generator")
-    
-    openai_api_key = st.text_input("Enter OpenAI API Key", type="password")
-    if not openai_api_key:
-        st.warning("Please enter your OpenAI API key to generate ads.")
-        return
-    openai.api_key = openai_api_key
-    
-    keywords = st.text_area("Enter Keywords (comma-separated)", "best shipping software, affordable shipping rates, fast label printing").split(",")
-    keywords = [k.strip() for k in keywords if k.strip()]
-    
-    landing_page = st.text_input("Landing Page URL", "https://www.stamps.com")
-    
-    sentiment = st.selectbox("Select Sentiment", ["Positive", "Neutral", "Urgent"])
-    
-    usps = st.text_area("Enter Unique Selling Points (comma-separated)", "Save Time & Money, Easy-To-Use Interface, Trusted By Thousands").split(",")
-    usps = [u.strip() for u in usps if u.strip()]
-    
-    ctas = st.text_area("Enter Call-To-Actions (comma-separated)", "Sign Up Now, Start Saving Today, Try It Free").split(",")
-    ctas = [c.strip() for c in ctas if c.strip()]
-    
-    if st.button("Generate Ad Copy"):
-        ad_copy = generate_ad_copy_with_ai(keywords, landing_page, sentiment, usps, ctas)
-        
-        st.subheader("Generated Ad Copy:")
-        st.text_area("Ad Copy Output", ad_copy, height=300)
+    return response.choices[0].message.content
 
-if __name__ == "__main__":
-    main()
+# Streamlit UI
+st.title("AI-Powered Google Ads RSA Generator")
+
+landing_page = st.text_input("Landing Page URL:")
+keywords = st.text_area("Enter Keywords (comma-separated):").split(",")
+sentiment = st.selectbox("Select Sentiment:", ["Positive", "Neutral", "Persuasive"])
+usps = st.text_area("Enter Unique Selling Points (comma-separated):").split(",")
+ctas = st.text_area("Enter Call-To-Actions (comma-separated):").split(",")
+temperature = st.slider("AI Creativity (Temperature):", 0.0, 1.0, 0.7)
+
+generate_button = st.button("Generate Ad Copy")
+
+if generate_button:
+    if landing_page and keywords and usps and ctas:
+        with st.spinner("Generating ad copy..."):
+            ad_copy = generate_ad_copy_with_ai(keywords, landing_page, sentiment, usps, ctas, temperature)
+            st.subheader("Generated Ad Copy:")
+            st.write(ad_copy)
+    else:
+        st.error("Please fill in all required fields.")
